@@ -20,8 +20,10 @@ def _fetch_chunk(lats: List[str], lons: List[str], max_retries=3) -> List[Dict[s
         "timezone": "UTC",
         "forecast_days": 3 
     }
-    
-    response = requests.get(url, params=params, timeout=15)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    response = requests.get(url, params=params, headers=headers, timeout=15)
     response.raise_for_status()
     data = response.json()
     
@@ -78,6 +80,7 @@ def fetch_weather_for_checkpoints(checkpoints: List[Dict[str, float]], departure
                         "timestamp": None
                     })
         except requests.RequestException as e:
+            print(f"Weather API Error for chunk: {e}")
             # Fallback to None if request fails
             for _ in chunk:
                 results.append({
