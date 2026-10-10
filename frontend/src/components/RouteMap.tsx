@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import Map, { Source, Layer, Popup } from 'react-map-gl/maplibre';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
+import Map, { Source, Layer, Popup, Marker } from 'react-map-gl/maplibre';
+import type { MapRef } from 'react-map-gl';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -14,6 +15,7 @@ interface RouteMapProps {
 
 const RouteMap: React.FC<RouteMapProps> = ({ routes, selectedRouteId, heatmapData }) => {
   const [hoverInfo, setHoverInfo] = useState<any>(null);
+  const mapRef = useRef<MapRef>(null);
 
   const mapData = useMemo(() => {
     if (!routes || routes.length === 0) return null;
@@ -49,7 +51,8 @@ const RouteMap: React.FC<RouteMapProps> = ({ routes, selectedRouteId, heatmapDat
             properties: {
               ...cp,
               color: riskColor,
-              index: idx
+              index: idx,
+              risk_weight: cp.final_risk === -1 ? 0 : cp.final_risk
             },
             geometry: {
               type: 'Point',
@@ -72,82 +75,156 @@ const RouteMap: React.FC<RouteMapProps> = ({ routes, selectedRouteId, heatmapDat
     };
   }, [routes, selectedRouteId, heatmapData]);
 
+  // Calculate bounds and fit map
+  useEffect(() => {
+    if (mapData && mapRef.current) {
+      const selectedRouteGeo = mapData.routes.features.find((f: any) => f.properties.is_selected);
+      if (selectedRouteGeo) {
+        const bounds = selectedRouteGeo.geometry.coordinates.reduce((b: any, coord: any) => {
+          return [
+            [Math.min(b[0][0], coord[0]), Math.min(b[0][1], coord[1])],
+            [Math.max(b[1][0], coord[0]), Math.max(b[1][1], coord[1])]
+          ];
+        }, [[180, 90], [-180, -90]]);
+        
+        mapRef.current.fitBounds(bounds, {
+          padding: 60,
+          duration: 1000
+        });
+      }
+    }
+  }, [mapData, selectedRouteId]);
+
   if (!mapData) {
-    return <div className="h-full flex items-center justify-center text-gray-500">Enter trip details to see routes</div>;
+    return <div className="h-full flex items-center justify-center text-gray-400">Enter trip details to see routes</div>;
   }
-
-  // Calculate bounds
-  const start = routes[0].coordinates[0];
   
-  return (
-    <Map
-      initialViewState={{
-        longitude: start[0],
-        latitude: start[1],
-        zoom: 5
-      }}
-      mapStyle="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-      interactiveLayerIds={['checkpoints-layer']}
-      onClick={e => {
-        if (e.features && e.features.length > 0) {
-          setHoverInfo({
-            lngLat: e.lngLat,
-            feature: e.features[0]
-          });
-        } else {
-          setHoverInfo(null);
-        }
-      }}
-    >
-      <Source id="routes" type="geojson" data={mapData.routes as any}>
-        <Layer
-          id="routes-layer"
-          type="line"
-          paint={{
-            'line-color': ['get', 'color'],
-            'line-width': ['case', ['get', 'is_selected'], 5, 3],
-            'line-opacity': ['case', ['get', 'is_selected'], 1, 0.5]
-          }}
-          layout={{
-            'line-join': 'round',
-            'line-cap': 'round'
-          }}
-        />
-      </Source>
+  const start = routes[0].coordinates[0];
+  const end = routes[0].coordinates[routes[0].coordinates.length - 1];
 
-      <Source id="checkpoints" type="geojson" data={mapData.checkpoints as any}>
-        <Layer
-          id="checkpoints-layer"
-          type="circle"
-          paint={{
-            'circle-radius': 6,
-            'circle-color': ['get', 'color'],
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#ffffff'
-          }}
-        />
-      </Source>
-      
-      {hoverInfo && (
-        <Popup
-          longitude={hoverInfo.lngLat.lng}
-          latitude={hoverInfo.lngLat.lat}
-          onClose={() => setHoverInfo(null)}
-          closeButton={true}
-          closeOnClick={false}
-          className="z-50"
-        >
-          <div className="p-2 text-sm max-w-xs">
-            <h4 className="font-bold border-b pb-1 mb-2">Checkpoint {hoverInfo.feature.properties.index}</h4>
-            <p><span className="font-semibold">Dist:</span> {hoverInfo.feature.properties.cumulative_distance.toFixed(1)} mi</p>
-            <p><span className="font-semibold">Wind:</span> {hoverInfo.feature.properties.wind_mph?.toFixed(1) || 'N/A'} mph</p>
-            <p><span className="font-semibold">Rain:</span> {hoverInfo.feature.properties.rain_in_hr?.toFixed(2) || 'N/A'} in/hr</p>
-            <p><span className="font-semibold">Snow:</span> {hoverInfo.feature.properties.snow_in_hr?.toFixed(2) || 'N/A'} in/hr</p>
-            <p><span className="font-semibold">Risk Level:</span> {hoverInfo.feature.properties.final_risk}</p>
-          </div>
-        </Popup>
-      )}
-    </Map>
+  return (
+    <div className="w-full h-full relative">
+      <Map
+        ref={mapRef}
+        initialViewState={{
+          longitude: start[0],
+          latitude: start[1],
+          zoom: 5
+        }}
+        mapStyle="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+        interactiveLayerIds={['checkpoints-layer']}
+        onClick={e => {
+          if (e.features && e.features.length > 0) {
+            setHoverInfo({
+              lngLat: e.lngLat,
+              feature: e.features[0]
+            });
+          } else {
+            setHoverInfo(null);
+          }
+        }}
+      >
+        <Source id="routes" type="geojson" data={mapData.routes as any}>
+          <Layer
+            id="routes-layer"
+            type="line"
+            paint={{
+              'line-color': ['get', 'color'],
+              'line-width': ['case', ['get', 'is_selected'], 5, 3],
+              'line-opacity': ['case', ['get', 'is_selected'], 1, 0.5]
+            }}
+            layout={{
+              'line-join': 'round',
+              'line-cap': 'round'
+            }}
+          />
+        </Source>
+
+        <Source id="checkpoints" type="geojson" data={mapData.checkpoints as any}>
+          {/* True Heatmap Layer */}
+          <Layer 
+            id="checkpoints-heatmap" 
+            type="heatmap" 
+            paint={{
+              'heatmap-weight': [
+                'interpolate',
+                ['linear'],
+                ['get', 'risk_weight'],
+                0, 0,
+                4, 1
+              ],
+              'heatmap-intensity': 1.2,
+              'heatmap-color': [
+                'interpolate',
+                ['linear'],
+                ['heatmap-density'],
+                0, 'rgba(16, 185, 129, 0)',
+                0.2, 'rgba(16, 185, 129, 0.4)',
+                0.5, 'rgba(252, 211, 77, 0.7)',
+                0.7, 'rgba(249, 115, 22, 0.8)',
+                0.9, 'rgba(239, 68, 68, 0.9)',
+                1, 'rgba(127, 29, 29, 0.9)'
+              ],
+              'heatmap-radius': 30,
+              'heatmap-opacity': 0.7
+            }}
+          />
+          
+          <Layer
+            id="checkpoints-layer"
+            type="circle"
+            paint={{
+              'circle-radius': 5,
+              'circle-color': ['get', 'color'],
+              'circle-stroke-width': 2,
+              'circle-stroke-color': '#ffffff',
+              'circle-opacity': 0.9
+            }}
+          />
+        </Source>
+        
+        <Marker longitude={start[0]} latitude={start[1]} anchor="center">
+          <div className="w-4 h-4 bg-blue-600 border-2 border-white rounded-full shadow-md z-10"></div>
+        </Marker>
+
+        <Marker longitude={end[0]} latitude={end[1]} anchor="bottom">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="#ef4444" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-md z-10">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
+          </svg>
+        </Marker>
+
+        {hoverInfo && (
+          <Popup
+            longitude={hoverInfo.lngLat.lng}
+            latitude={hoverInfo.lngLat.lat}
+            onClose={() => setHoverInfo(null)}
+            closeButton={false}
+            closeOnClick={false}
+            className="z-50 shadow-xl"
+            offset={10}
+            anchor="bottom"
+          >
+            <div className="p-3 text-sm min-w-[200px] border-0">
+              <h4 className="font-bold border-b pb-1 mb-2 text-gray-800">Checkpoint {hoverInfo.feature.properties.index}</h4>
+              <div className="grid grid-cols-2 gap-y-1 text-gray-600">
+                <span>Dist:</span> <span className="font-medium text-gray-900">{hoverInfo.feature.properties.cumulative_distance.toFixed(1)} mi</span>
+                <span>ETA:</span> <span className="font-medium text-gray-900">{new Date(hoverInfo.feature.properties.eta_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                <span>Wind:</span> <span className="font-medium text-gray-900">{hoverInfo.feature.properties.wind_mph?.toFixed(1) || 'N/A'} mph</span>
+                <span>Rain:</span> <span className="font-medium text-gray-900">{hoverInfo.feature.properties.rain_in_hr?.toFixed(2) || '0'} in/hr</span>
+                <span>Snow:</span> <span className="font-medium text-gray-900">{hoverInfo.feature.properties.snow_in_hr?.toFixed(2) || '0'} in/hr</span>
+              </div>
+              <div className="mt-2 pt-2 border-t font-semibold text-gray-800 flex justify-between">
+                 <span>Risk:</span>
+                 <span style={{color: hoverInfo.feature.properties.color}}>
+                   {['Unknown', 'Low', 'Moderate', 'High', 'Severe', 'No Travel'][hoverInfo.feature.properties.final_risk + 1]}
+                 </span>
+              </div>
+            </div>
+          </Popup>
+        )}
+      </Map>
+    </div>
   );
 };
 

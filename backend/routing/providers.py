@@ -96,7 +96,27 @@ def get_routes(start_lon: float, start_lat: float, end_lon: float, end_lat: floa
             
         return routes
     except requests.RequestException as e:
-        error_msg = str(e)
         if hasattr(e, 'response') and e.response is not None:
-            error_msg += f" - Response: {e.response.text}"
-        raise RoutingProviderError(f"Failed to fetch routes: {error_msg}")
+            try:
+                err_json = e.response.json()
+                error_obj = err_json.get("error", {})
+                code = error_obj.get("code")
+                msg = error_obj.get("message", "")
+                
+                if code == 2004:
+                    if "greater than 6000000.0" in msg:
+                        raise RoutingProviderError("The selected route is too long. The routing service only supports trips up to ~3,728 miles (6,000 km). Please choose closer locations.")
+                    raise RoutingProviderError(f"Route parameter limit exceeded: {msg}")
+                    
+                if code == 2010:
+                    raise RoutingProviderError("Could not find a valid driving route between these locations. Ensure they are connected by land.")
+                
+                # Catch-all for other ORS JSON errors
+                if msg:
+                    raise RoutingProviderError(f"Routing error: {msg}")
+            except ValueError:
+                pass
+            
+            raise RoutingProviderError(f"Routing service returned an error ({e.response.status_code}). Please try again.")
+        else:
+            raise RoutingProviderError("Failed to connect to the routing service. Please check your internet connection.")
