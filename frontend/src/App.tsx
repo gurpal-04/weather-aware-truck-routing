@@ -3,6 +3,7 @@ import TripForm from './components/TripForm';
 import RouteMap from './components/RouteMap';
 import RouteComparison from './components/RouteComparison';
 import ForecastSlider from './components/ForecastSlider';
+import { fetchWeatherForCheckpoints, calculateCheckpointRisk } from './utils/weather';
 
 function App() {
   const [routes, setRoutes] = useState<any[]>([]);
@@ -18,19 +19,47 @@ function App() {
     setError(null);
     setTripParams(data);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/routes/analyze/`, {
+      // 1. Build Routes
+      const buildResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/routes/build/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Failed to analyze routes');
+      if (!buildResponse.ok) {
+        const errData = await buildResponse.json();
+        throw new Error(errData.error || 'Failed to build routes');
       }
-      const resData = await response.json();
-      setRoutes(resData.routes);
-      if (resData.routes.length > 0) {
-        setSelectedRouteId(resData.routes[0].id);
+      const buildData = await buildResponse.json();
+      const rawRoutes = buildData.routes;
+      
+      if (!rawRoutes || rawRoutes.length === 0) {
+        setRoutes([]);
+        return;
+      }
+      
+      // 2. Fetch Weather
+      for (const route of rawRoutes) {
+        const weatherData = await fetchWeatherForCheckpoints(route.checkpoints, data.departure_time);
+        for (let i = 0; i < route.checkpoints.length; i++) {
+          Object.assign(route.checkpoints[i], weatherData[i]);
+        }
+      }
+      
+      // 3. Score Routes
+      const scoreResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/routes/score/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routes: rawRoutes, load_weight: data.load_weight })
+      });
+      if (!scoreResponse.ok) {
+        const errData = await scoreResponse.json();
+        throw new Error(errData.error || 'Failed to score routes');
+      }
+      const scoreData = await scoreResponse.json();
+
+      setRoutes(scoreData.routes);
+      if (scoreData.routes.length > 0) {
+        setSelectedRouteId(scoreData.routes[0].id);
       }
     } catch (err: any) {
       setError(err.message);
@@ -52,26 +81,25 @@ function App() {
     setIsForecastLoading(true);
 
     const fetchHeatmap = async () => {
-      const lats = selectedRoute.checkpoints.map((cp: any) => cp.lat).join(',');
-      const lons = selectedRoute.checkpoints.map((cp: any) => cp.lon).join(',');
+      const mockCheckpoints = selectedRoute.checkpoints.map((cp: any) => ({
+        lat: cp.lat,
+        lon: cp.lon,
+        eta_offset_seconds: 0
+      }));
       
       const d = new Date(tripParams.departure_time);
       d.setHours(d.getHours() + forecastOffsetHours);
-      const targetTime = d.toISOString();
+      const targetTimeIso = d.toISOString();
       
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/weather/forecast/?lats=${lats}&lons=${lons}&target_time=${targetTime}&load_weight=${tripParams.load_weight}`);
-        if (!response.ok) {
-          if (!isCancelled) setIsForecastLoading(false);
-          return;
-        }
-        const resData = await response.json();
+        const weatherData = await fetchWeatherForCheckpoints(mockCheckpoints, targetTimeIso);
+        
         if (!isCancelled) {
-          // Merge with selectedRoute checkpoints so we have cumulative_distance etc
-          const merged = selectedRoute.checkpoints.map((cp: any, i: number) => ({
-             ...cp,
-             ...resData.data[i]
-          }));
+          const merged = selectedRoute.checkpoints.map((cp: any, i: number) => {
+            const wd = weatherData[i];
+            const risk_res = calculateCheckpointRisk(wd.wind_mph, wd.rain_in_hr, wd.snow_in_hr, tripParams.load_weight);
+            return { ...cp, ...wd, ...risk_res };
+          });
           setHeatmapData(merged);
           setIsForecastLoading(false);
         }

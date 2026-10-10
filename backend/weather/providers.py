@@ -18,7 +18,7 @@ def _fetch_chunk(lats: List[str], lons: List[str], max_retries=3) -> List[Dict[s
         "wind_speed_unit": "mph",
         "precipitation_unit": "inch",
         "timezone": "UTC",
-        "forecast_days": 3 
+        "forecast_days": 14 
     }
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
