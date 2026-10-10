@@ -1,0 +1,37 @@
+services:
+  # Backend Web Service
+  - type: web
+    name: watr-backend
+    runtime: python
+    buildCommand: "cd backend && pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    startCommand: "cd backend && gunicorn config.wsgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: ORS_API_KEY
+        sync: false # You will need to set this manually in the Render Dashboard
+      - key: DB_PATH
+        value: "/data/db.sqlite3"
+    disk:
+      name: sqlite-data
+      mountPath: /data
+      sizeGB: 1
+
+  # Frontend Static Site
+  - type: web
+    name: watr-frontend
+    runtime: static
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: VITE_API_BASE_URL
+        fromService:
+          name: watr-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
