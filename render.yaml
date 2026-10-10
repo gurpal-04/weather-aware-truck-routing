@@ -14,12 +14,6 @@ services:
         value: "False"
       - key: ORS_API_KEY
         sync: false # You will need to set this manually in the Render Dashboard
-      - key: DB_PATH
-        value: "/data/db.sqlite3"
-    disk:
-      name: sqlite-data
-      mountPath: /data
-      sizeGB: 1
 
   # Frontend Static Site
   - type: web
