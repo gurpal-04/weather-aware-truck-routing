@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import Map, { Source, Layer, Popup, Marker } from 'react-map-gl/maplibre';
-import type { MapRef } from 'react-map-gl';
+import type { MapRef } from 'react-map-gl/maplibre';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -34,7 +34,7 @@ const RouteMap: React.FC<RouteMapProps> = ({ routes, selectedRouteId, heatmapDat
       }
     }));
 
-    const checkpointFeatures = [];
+    const checkpointFeatures: any[] = [];
     routes.forEach(route => {
       if (route.id === selectedRouteId) {
         const checkpointsToUse = heatmapData && heatmapData.length > 0 ? heatmapData : route.checkpoints;
