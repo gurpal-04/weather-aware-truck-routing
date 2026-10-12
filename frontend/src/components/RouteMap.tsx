@@ -13,6 +13,13 @@ interface RouteMapProps {
   heatmapData?: any[];
 }
 
+const formatEta = (properties: any) => {
+  const rawDate = properties?.eta_timestamp || properties?.timestamp;
+  if (!rawDate) return 'N/A';
+  const d = new Date(rawDate);
+  return isNaN(d.getTime()) ? 'N/A' : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
 const RouteMap: React.FC<RouteMapProps> = ({ routes, selectedRouteId, heatmapData }) => {
   const [hoverInfo, setHoverInfo] = useState<any>(null);
   const mapRef = useRef<MapRef>(null);
@@ -209,7 +216,7 @@ const RouteMap: React.FC<RouteMapProps> = ({ routes, selectedRouteId, heatmapDat
               <h4 className="font-bold border-b pb-1 mb-2 text-gray-800">Checkpoint {hoverInfo.feature.properties.index}</h4>
               <div className="grid grid-cols-2 gap-y-1 text-gray-600">
                 <span>Dist:</span> <span className="font-medium text-gray-900">{hoverInfo.feature.properties.cumulative_distance.toFixed(1)} mi</span>
-                <span>ETA:</span> <span className="font-medium text-gray-900">{new Date(hoverInfo.feature.properties.eta_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                <span>ETA:</span> <span className="font-medium text-gray-900">{formatEta(hoverInfo.feature.properties)}</span>
                 <span>Wind:</span> <span className="font-medium text-gray-900">{hoverInfo.feature.properties.wind_mph?.toFixed(1) || 'N/A'} mph</span>
                 <span>Rain:</span> <span className="font-medium text-gray-900">{hoverInfo.feature.properties.rain_in_hr?.toFixed(2) || '0'} in/hr</span>
                 <span>Snow:</span> <span className="font-medium text-gray-900">{hoverInfo.feature.properties.snow_in_hr?.toFixed(2) || '0'} in/hr</span>

@@ -82,6 +82,9 @@ def generate_checkpoints(coordinates: List[Tuple[float, float]], interval_miles:
          })
          
     # Add ETAs (distance-weighted)
+    if (not total_duration_seconds or total_duration_seconds <= 0) and total_dist > 0:
+        total_duration_seconds = (total_dist / 50.0) * 3600.0
+
     for cp in checkpoints:
         fraction = cp["cumulative_distance"] / total_dist if total_dist > 0 else 0
         cp["eta_offset_seconds"] = total_duration_seconds * fraction

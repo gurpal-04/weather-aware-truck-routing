@@ -70,24 +70,28 @@ def fetch_weather_for_checkpoints(checkpoints: List[Dict[str, float]], departure
                         "wind_mph": wind_speeds[closest_idx],
                         "rain_in_hr": precips[closest_idx],
                         "snow_in_hr": snowfalls[closest_idx], 
-                        "timestamp": times[closest_idx]
+                        "timestamp": times[closest_idx],
+                        "eta_timestamp": eta.isoformat()
                     })
                 else:
                     results.append({
                         "wind_mph": None,
                         "rain_in_hr": None,
                         "snow_in_hr": None,
-                        "timestamp": None
+                        "timestamp": None,
+                        "eta_timestamp": eta.isoformat()
                     })
         except requests.RequestException as e:
             print(f"Weather API Error for chunk: {e}")
             # Fallback to None if request fails
-            for _ in chunk:
+            for cp in chunk:
+                eta = departure_time + timedelta(seconds=cp.get("eta_offset_seconds", 0))
                 results.append({
                     "wind_mph": None,
                     "rain_in_hr": None,
                     "snow_in_hr": None,
-                    "timestamp": None
+                    "timestamp": None,
+                    "eta_timestamp": eta.isoformat()
                 })
                 
     return results

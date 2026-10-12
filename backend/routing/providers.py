@@ -79,14 +79,27 @@ def get_routes(start_lon: float, start_lat: float, end_lon: float, end_lat: floa
             summary = props.get("summary", {})
             
             # ORS returns distance in meters, duration in seconds
-            distance_meters = summary.get("distance", 0)
-            duration_seconds = summary.get("duration", 0)
-            
+            distance_meters = summary.get("distance")
+            duration_seconds = summary.get("duration")
+
+            segments = props.get("segments", [])
+            if distance_meters is None and segments:
+                distance_meters = sum(s.get("distance", 0) for s in segments)
+            if duration_seconds is None and segments:
+                duration_seconds = sum(s.get("duration", 0) for s in segments)
+
+            distance_meters = float(distance_meters or 0)
+            duration_seconds = float(duration_seconds or 0)
+
             distance_miles = distance_meters * 0.000621371
-            
+
+            # Fallback if duration is missing or 0 but distance is known (average 50 mph)
+            if duration_seconds <= 0 and distance_miles > 0:
+                duration_seconds = (distance_miles / 50.0) * 3600.0
+
             geometry = feature.get("geometry", {})
             coordinates = geometry.get("coordinates", [])
-            
+
             routes.append({
                 "id": f"route_{i}",
                 "distance_miles": distance_miles,

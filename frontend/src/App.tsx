@@ -39,6 +39,22 @@ function App() {
       
       // 2. Fetch Weather
       for (const route of rawRoutes) {
+        const depTime = new Date(data.departure_time).getTime();
+        const totalDistance = route.distance_miles || route.checkpoints[route.checkpoints.length - 1]?.cumulative_distance || 0;
+        let totalDuration = route.duration_seconds;
+        if (!totalDuration || totalDuration <= 0) {
+          totalDuration = totalDistance > 0 ? (totalDistance / 50.0) * 3600.0 : 0;
+          route.duration_seconds = totalDuration;
+        }
+
+        for (const cp of route.checkpoints) {
+          if ((!cp.eta_offset_seconds || cp.eta_offset_seconds === 0) && totalDistance > 0 && cp.cumulative_distance > 0) {
+            cp.eta_offset_seconds = totalDuration * (cp.cumulative_distance / totalDistance);
+          }
+          if (!isNaN(depTime)) {
+            cp.eta_timestamp = new Date(depTime + ((cp.eta_offset_seconds || 0) * 1000)).toISOString();
+          }
+        }
         const weatherData = await fetchWeatherForCheckpoints(route.checkpoints, data.departure_time);
         for (let i = 0; i < route.checkpoints.length; i++) {
           Object.assign(route.checkpoints[i], weatherData[i]);
@@ -81,16 +97,17 @@ function App() {
     setIsForecastLoading(true);
 
     const fetchHeatmap = async () => {
-      const mockCheckpoints = selectedRoute.checkpoints.map((cp: any) => ({
-        lat: cp.lat,
-        lon: cp.lon,
-        eta_offset_seconds: 0
-      }));
-      
       const d = new Date(tripParams.departure_time);
       d.setHours(d.getHours() + forecastOffsetHours);
       const targetTimeIso = d.toISOString();
-      
+      const offsetMs = d.getTime();
+
+      const mockCheckpoints = selectedRoute.checkpoints.map((cp: any) => ({
+        lat: cp.lat,
+        lon: cp.lon,
+        eta_offset_seconds: cp.eta_offset_seconds || 0
+      }));
+
       try {
         const weatherData = await fetchWeatherForCheckpoints(mockCheckpoints, targetTimeIso);
         
@@ -98,7 +115,8 @@ function App() {
           const merged = selectedRoute.checkpoints.map((cp: any, i: number) => {
             const wd = weatherData[i];
             const risk_res = calculateCheckpointRisk(wd.wind_mph, wd.rain_in_hr, wd.snow_in_hr, tripParams.load_weight);
-            return { ...cp, ...wd, ...risk_res };
+            const cpEta = new Date(offsetMs + ((cp.eta_offset_seconds || 0) * 1000)).toISOString();
+            return { ...cp, ...wd, ...risk_res, eta_timestamp: wd?.eta_timestamp || cpEta };
           });
           setHeatmapData(merged);
           setIsForecastLoading(false);

@@ -63,17 +63,21 @@ export async function fetchWeatherForCheckpoints(checkpoints: any[], departureTi
           wind_mph,
           rain_in_hr,
           snow_in_hr,
-          timestamp
+          timestamp,
+          eta_timestamp: !isNaN(eta.getTime()) ? eta.toISOString() : null
         });
       }
     } catch (e) {
       console.error("OpenMeteo fetch error:", e);
       for (let i = 0; i < chunk.length; i++) {
+        const cp = chunk[i];
+        const eta = new Date(departureTime.getTime() + ((cp?.eta_offset_seconds || 0) * 1000));
         allResults.push({
           wind_mph: null,
           rain_in_hr: null,
           snow_in_hr: null,
-          timestamp: null
+          timestamp: null,
+          eta_timestamp: !isNaN(eta.getTime()) ? eta.toISOString() : null
         });
       }
     }
